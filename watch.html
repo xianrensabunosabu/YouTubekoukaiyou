@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lentrance reader</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#27293d" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #1e1e2f;
+      color: #fff;
+      margin: 0;
+      padding: 1em;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+    }
+
+    iframe {
+      width: 100%;
+      height: 450px;
+      border-radius: 8px;
+      background: black;
+    }
+
+    .title {
+      font-size: 1.5em;
+      margin: 0.5em 0;
+    }
+
+    .meta {
+      color: #aaa;
+      margin-bottom: 1em;
+    }
+
+    .meta a {
+      color: #4fc3f7;
+      text-decoration: none;
+    }
+
+    .meta a:hover {
+      text-decoration: underline;
+    }
+
+    .back {
+      margin-top: 1em;
+      display: inline-block;
+      padding: 0.5em 1em;
+      background: #4caf50;
+      color: white;
+      border-radius: 4px;
+      text-decoration: none;
+    }
+
+    #comments {
+      margin-top: 2em;
+    }
+
+    .comment {
+      display: flex;
+      margin-bottom: 1.2em;
+    }
+
+    .bubble {
+      background: #2d2f44;
+      padding: 0.8em 1em;
+      border-radius: 16px;
+      max-width: 85%;
+      position: relative;
+    }
+
+    .bubble::before {
+      content: '';
+      position: absolute;
+      top: 10px;
+      left: -10px;
+      border: 8px solid transparent;
+      border-right-color: #2d2f44;
+    }
+
+    .author {
+      font-weight: bold;
+      font-size: 0.9em;
+    }
+
+    .date {
+      font-size: 0.75em;
+      color: #aaa;
+      margin-left: 0.5em;
+    }
+
+    .text {
+      margin-top: 0.3em;
+      font-size: 0.95em;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 🎥 YouTube埋め込みiframe -->
+    <iframe id="video-frame" frameborder="0"
+      allow="autoplay; encrypted-media"
+      allowfullscreen></iframe>
+
+    <div class="title" id="video-title">タイトル読み込み中...</div>
+    <div class="meta" id="video-meta"></div>
+    <a href="index.html" class="back">← 戻る</a>
+
+    <h2>コメント</h2>
+    <div id="comments"><p>読み込み中...</p></div>
+  </div>
+
+  <script>
+    const API_KEYS = [
+      'AIzaSyAXqYrx-dJRWJbp9F60yL50XwaMTX9trvk',
+      'AIzaSyB61hHLbtWnXpUwGePHF47VTC1vFCfRUx0',
+      'AIzaSyByIBVpyf6HPLIrh5Rv49lN6Lre_LA0v68',
+      'AIzaSyDd_sQjAGvDtkL8JC4Z5C5V5k5uCfaKEW8',
+      'AIzaSyCyRNjwH_yPqiGPxpTm_F6JWgo2sEfiNzI',
+      'AIzaSyBgawf2kGHDh4hzFud7duAXN6RHT4R_ZaY',
+      'AIzaSyCyRNjwH_yPqiGPxpTm_F6JWgo2sEfiNzI',
+      'AIzaSyBmBkch1otJdpnCdbs3rTNGCUtBDvYj5Bs',
+            
+    ];
+    let apiIndex = 0;
+
+    function getApiKey() {
+      return apiIndex < API_KEYS.length ? API_KEYS[apiIndex] : null;
+    }
+
+    function nextApiKey() {
+      apiIndex++;
+      return getApiKey();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get('id');
+    const iframe = document.getElementById('video-frame');
+    const titleEl = document.getElementById('video-title');
+    const metaEl = document.getElementById('video-meta');
+    const commentsEl = document.getElementById('comments');
+
+    if (!videoId) {
+      titleEl.textContent = '無効な動画IDです';
+      iframe.style.display = 'none';
+    } else {
+      loadVideoInfo();
+      loadComments();
+      iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`;
+    }
+
+    async function fetchWithRetry(url) {
+      while (apiIndex < API_KEYS.length) {
+        const apiKey = API_KEYS[apiIndex];
+        const res = await fetch(url.replace('API_KEY', apiKey));
+        if (res.status === 403 || res.status === 400) {
+          apiIndex++;
+          continue;
+        }
+        if (!res.ok) throw new Error('APIエラー');
+        return res.json();
+      }
+      throw new Error('APIキーの上限に達しました');
+    }
+
+    async function loadVideoInfo() {
+      try {
+        const data = await fetchWithRetry(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=API_KEY`);
+        if (!data.items || data.items.length === 0) {
+          titleEl.textContent = '動画が見つかりません';
+          iframe.style.display = 'none';
+          return;
+        }
+        const video = data.items[0];
+        titleEl.textContent = video.snippet.title;
+        metaEl.innerHTML = `<a href="channel.html?id=${video.snippet.channelId}">${video.snippet.channelTitle}</a> - ${new Date(video.snippet.publishedAt).toLocaleDateString()}`;
+      } catch (e) {
+        alert('動画情報の取得に失敗しました。');
+      }
+    }
+
+    async function loadComments() {
+      try {
+        const data = await fetchWithRetry(`https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${videoId}&maxResults=20&textFormat=plainText&key=API_KEY`);
+        commentsEl.innerHTML = '';
+        if (!data.items || data.items.length === 0) {
+          commentsEl.innerHTML = '<p>コメントがありません。</p>';
+          return;
+        }
+        data.items.forEach(item => {
+          const c = item.snippet.topLevelComment.snippet;
+          const div = document.createElement('div');
+          div.className = 'comment';
+          div.innerHTML = `
+            <div class="bubble">
+              <div>
+                <span class="author">${c.authorDisplayName}</span>
+                <span class="date">${new Date(c.publishedAt).toLocaleString()}</span>
+              </div>
+              <div class="text">${c.textDisplay}</div>
+            </div>
+          `;
+          commentsEl.appendChild(div);
+        });
+      } catch (e) {
+        commentsEl.innerHTML = '<p>コメントの取得に失敗しました。</p>';
+        console.error(e);
+      }
+    }
+
+    // ✅ Service Worker 登録（PWA対応）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(() => console.log("Service Worker 登録成功"))
+        .catch(err => console.error("Service Worker 登録失敗:", err));
+    }
+  </script>
+</body>
+</html>
